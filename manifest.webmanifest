@@ -1,0 +1,17 @@
+{
+  "name": "健身打卡 · 50 次挑战",
+  "short_name": "健身打卡",
+  "description": "一年 50 次、每次 1 小时，拿下明年年卡",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F4F1",
+  "theme_color": "#F4F4F1",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
