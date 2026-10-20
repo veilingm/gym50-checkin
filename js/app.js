@@ -24,6 +24,7 @@
   let tickHandle = null;
   let wakeLock = null;
   let editId = null;
+  let cloudSynced = false;
 
   const end = () => addDays(parseDate(settings.start), 364);
   const inWindow = (d) => daysBetween(parseDate(settings.start), d) >= 0 && daysBetween(d, end()) >= 0;
@@ -301,6 +302,7 @@
     renderLog();
     renderTimer();
     renderTimerButtons();
+    renderAuth();
   }
 
   // ---- timer -------------------------------------------------------------------
@@ -355,6 +357,7 @@
     sessions.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), date: toStr(today()), minutes });
     sessions.sort((a, b) => (a.date < b.date ? -1 : 1));
     saveSessions();
+    syncToCloud();
     renderAll();
     if (minutes >= settings.goalMin) toast('已打卡，本次 ' + minutes + ' 分钟');
     else toast('已记录 ' + minutes + ' 分钟，未满 ' + settings.goalMin + ' 分钟不计入次数');
@@ -410,6 +413,7 @@
     }
     sessions.sort((a, b) => (a.date < b.date ? -1 : 1));
     saveSessions();
+    syncToCloud();
     $('dlgSession').close();
     renderAll();
   }
@@ -419,6 +423,7 @@
     if (!window.confirm('删除这条记录？')) return;
     sessions = sessions.filter((x) => x.id !== editId);
     saveSessions();
+    syncToCloud();
     $('dlgSession').close();
     renderAll();
     toast('记录已删除');
@@ -443,6 +448,7 @@
     if (!Number.isFinite(goalMin) || goalMin < 1 || goalMin > 300) { err.textContent = '达标时长需在 1–300 分钟之间'; err.classList.remove('hidden'); return; }
     settings = { start, target, goalMin };
     saveSettings();
+    syncToCloud();
     $('dlgSettings').close();
     renderAll();
     toast('设置已保存');
@@ -459,6 +465,112 @@
     $('dlgSettings').close();
     renderAll();
     toast('已清空');
+    syncToCloud();
+  }
+
+  // ---- cloud (Supabase) ---------------------------------------------------------
+  function renderAuth() {
+    const user = window.Supabase ? window.Supabase.getUser() : null;
+    $('authLoggedOut').classList.toggle('hidden', !!user);
+    $('authLoggedIn').classList.toggle('hidden', !user);
+    if (user) {
+      $('accountEmail').textContent = user.email;
+      const st = $('accountStatus');
+      st.textContent = cloudSynced ? '已同步到云端' : '未连接云端，数据仅保存在本机';
+      st.classList.toggle('offline', !cloudSynced);
+    }
+  }
+
+  function authError(msg) {
+    const err = $('authErr');
+    err.textContent = msg;
+    err.classList.remove('hidden');
+  }
+
+  function translateAuthError(e) {
+    const m = (e && e.message) || '操作失败';
+    if (/Invalid login credentials/i.test(m)) return '邮箱或密码错误';
+    if (/already registered/i.test(m)) return '该邮箱已注册，请直接登录';
+    if (/Password should be at least/i.test(m)) return '密码至少 6 位';
+    if (/Email not confirmed/i.test(m)) return '邮箱未确认，请先点击邮件里的确认链接';
+    return m;
+  }
+
+  async function doLogin() {
+    if (!window.Supabase) { authError('云端未加载'); return; }
+    const email = $('fEmail').value.trim();
+    const password = $('fPassword').value;
+    if (!email || password.length < 6) { authError('请输入邮箱和至少 6 位密码'); return; }
+    $('authErr').classList.add('hidden');
+    try {
+      await window.Supabase.signIn(email, password);
+      await pullFromCloud();
+      renderAll();
+      toast('已登录，数据已同步');
+    } catch (e) {
+      authError(translateAuthError(e));
+    }
+  }
+
+  async function doSignup() {
+    if (!window.Supabase) { authError('云端未加载'); return; }
+    const email = $('fEmail').value.trim();
+    const password = $('fPassword').value;
+    if (!email || password.length < 6) { authError('请输入邮箱和至少 6 位密码'); return; }
+    $('authErr').classList.add('hidden');
+    try {
+      const r = await window.Supabase.signUp(email, password);
+      if (r && r.needsConfirmation) {
+        authError('注册成功，请到邮箱点击确认链接后再登录');
+      } else {
+        await pullFromCloud();
+        renderAll();
+        toast('注册成功，已登录');
+      }
+    } catch (e) {
+      authError(translateAuthError(e));
+    }
+  }
+
+  async function doLogout() {
+    if (!window.Supabase) return;
+    await window.Supabase.signOut();
+    renderAuth();
+    toast('已退出登录，数据保留在本机');
+  }
+
+  async function pullFromCloud() {
+    if (!window.Supabase || !window.Supabase.isLoggedIn()) return;
+    try {
+      const [cloudSessions, cloudSettings] = await Promise.all([
+        window.Supabase.fetchSessions(),
+        window.Supabase.fetchSettings(),
+      ]);
+      const cloudEmpty = !cloudSettings && (!cloudSessions || cloudSessions.length === 0);
+      if (cloudSettings) settings = cloudSettings;
+      if (cloudSessions && cloudSessions.length) sessions = cloudSessions;
+      saveSettings();
+      saveSessions();
+      cloudSynced = true;
+      if (cloudEmpty && sessions.length) await syncToCloud();
+    } catch (e) {
+      cloudSynced = false;
+      console.warn('拉取云端失败', e);
+    }
+    renderAuth();
+  }
+
+  async function syncToCloud() {
+    if (!window.Supabase || !window.Supabase.isLoggedIn()) return;
+    try {
+      await window.Supabase.pushSessions(sessions);
+      await window.Supabase.pushSettings(settings);
+      cloudSynced = true;
+    } catch (e) {
+      cloudSynced = false;
+      console.warn('同步云端失败', e);
+    }
+    renderAuth();
   }
 
   // ---- theme -------------------------------------------------------------------
@@ -496,6 +608,9 @@
   $('formSettings').addEventListener('submit', submitSettings);
   $('btnSettingsCancel').addEventListener('click', () => $('dlgSettings').close());
   $('btnReset').addEventListener('click', resetAll);
+  $('btnLogin').addEventListener('click', doLogin);
+  $('btnSignup').addEventListener('click', doSignup);
+  $('btnLogout').addEventListener('click', doLogout);
 
   let resizeHandle = null;
   window.addEventListener('resize', () => {
@@ -510,6 +625,18 @@
     tickHandle = setInterval(tick, 500);
   }
   renderAll();
+
+  (async () => {
+    if (window.Supabase) {
+      try {
+        await window.Supabase.restoreSession();
+        if (window.Supabase.isLoggedIn()) await pullFromCloud();
+        else renderAuth();
+      } catch (e) {
+        renderAuth();
+      }
+    }
+  })();
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

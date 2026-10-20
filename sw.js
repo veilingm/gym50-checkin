@@ -5,6 +5,8 @@ const ASSETS = [
   './manifest.webmanifest',
   './css/style.css',
   './js/charts.js',
+  './js/supabase.min.js',
+  './js/supabase.js',
   './js/app.js',
   './fonts/barlow-500.woff2',
   './fonts/barlow-600.woff2',

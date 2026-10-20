@@ -359,6 +359,14 @@ svg text { font-family: inherit; }
 .tooltip .tt-row { display: flex; gap: 8px; justify-content: space-between; }
 .tooltip .tt-row b { font-weight: 600; }
 
+.auth-hint { margin: -4px 0 12px; font-size: 13px; color: var(--muted); }
+.auth-actions { display: flex; gap: 10px; margin-top: 4px; }
+.auth-actions .btn { flex: 1; height: 44px; padding: 0 12px; }
+.account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.account-email { font-size: 15px; font-weight: 600; word-break: break-all; }
+.account-status { font-size: 12px; color: var(--good); margin-top: 2px; }
+.account-status.offline { color: var(--warn); }
+
 @media (max-width: 355px) {
   .dots { grid-template-columns: repeat(10, 19px); gap: 6px 5px; }
   .dot { width: 19px; height: 19px; }
